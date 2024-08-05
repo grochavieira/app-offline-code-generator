@@ -1,0 +1,36 @@
+/* src/components/CodeBlock.css */
+.code-block-container {
+    margin: 20px 0;
+    position: relative;
+  }
+  
+  .code-block-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background-color: #2d2d2d;
+    color: white;
+    padding: 10px;
+    border-top-left-radius: 5px;
+    border-top-right-radius: 5px;
+  }
+  
+  .copy-button {
+    background: none;
+    border: none;
+    color: white;
+    cursor: pointer;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+  }
+  
+  .copy-button:hover {
+    color: #00bfff;
+  }
+  
+  .copy-button svg {
+    margin-right: 5px;
+  }
+
+  

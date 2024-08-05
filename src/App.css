@@ -1,0 +1,42 @@
+.App {
+	text-align: center;
+	padding: 30px;
+}
+
+.header-title {
+	font-family: 'Roboto';
+	font-size: 32px;
+	color: #001427;
+	text-transform: uppercase;
+}
+
+.dropzone {
+	border: 2px dashed #001427;
+	border-radius: 5px;
+	padding: 20px;
+	width: 95%;
+	max-width: 1000px;
+	height: 200px;
+	margin: 20px auto;
+	cursor: pointer;
+}
+
+.dropzone.active {
+	background-color: #f0f0f0;
+}
+
+table {
+	width: 80%;
+	margin: 20px auto;
+	border-collapse: collapse;
+}
+
+th,
+td {
+	border: 1px solid #ddd;
+	padding: 8px;
+}
+
+th {
+	background-color: #f4f4f4;
+}
