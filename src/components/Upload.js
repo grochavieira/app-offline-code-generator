@@ -59,6 +59,7 @@ const Upload = () => {
     const [syncControllerInBaseQuery, setSyncControllerInBaseQuery] = useState('');
     const [syncControllerInDeleteArray, setSyncControllerInDeleteArray] = useState('');
     const [syncControllerInSyncSystemData, setSyncControllerInSyncSystemData] = useState('');
+    const [syncControllerInInsertQuery, setSyncControllerInInsertQuery] = useState('');
 
     const generateRequestConfig = (workbook) => {
         let requestConfigCode = '';
@@ -123,7 +124,10 @@ const Upload = () => {
 
             const formattedApiFieldsMap = {};
             apiFields.forEach(item => {
-                const formattedVar = formatVariable(item.apiName)
+                let formattedVar = formatVariable(item.apiName)
+                if (formattedVar === 'isDeleted') {
+                    formattedVar = 'deleted';
+                }
                 formattedApiFieldsMap[formattedVar] = item;
             });
             console.log('formattedApiFieldsMap =>', formattedApiFieldsMap);
@@ -175,7 +179,7 @@ const Upload = () => {
         BaseRequest.${formattedObjectName}Request request = new BaseRequest.${formattedObjectName}Request(); 
 
         specific = request.fillRequest(
-            new RequestConfig.PlayerConfig(
+            new RequestConfig.${formattedObjectName}Config(
                 validateLastSync(lastSyncStamp.${smallObjectName}Sync),
                 queryLimit
             )
@@ -233,7 +237,8 @@ global class ReturnData{
         let returnDataCodeP1 = '';
         let returnDataCodeP2 = `
 
-    public void addRequest(BaseRequest request){`;
+    public void addRequest(BaseRequest request){
+    `;
 
         workbook.SheetNames.forEach(objectName => {
             console.log('objectName =>', objectName);
@@ -251,7 +256,7 @@ global class ReturnData{
     public BaseRequest.${formattedObjectName}Request ${smallObjectName}Request;`;
 
             returnDataCodeP2 += `
-    if (request instanceof BaseRequest.${formattedObjectName}Request)
+        if (request instanceof BaseRequest.${formattedObjectName}Request)
             this.${smallObjectName}Request  = (BaseRequest.${formattedObjectName}Request)request;`;
         })
         
@@ -282,13 +287,24 @@ global class ReturnData{
 
                 apiName = apiName.replace(/\./g, '_');
                 apiName = apiName.replace(/([a-z])([A-Z])/g, '$1_$2').toUpperCase();
+
+                const sqliteFieldName = generateSqliteFieldName(baseName);
                 
-                array.push({fieldName: `${baseName.toUpperCase()}_${apiName}${item.apiName === 'Id' ? 'X' : ''}`, dataType: item.dataType});
+                array.push({fieldName: `${sqliteFieldName}_${apiName}${item.apiName === 'Id' ? 'X' : ''}`, dataType: item.dataType});
             }
             
         });
 
         return array;
+    }
+
+    function generateSqliteFieldName(objectName) {
+        let apiName = objectName.replace(/__c|__r/g, '');
+
+        apiName = apiName.replace(/\./g, '_');
+        apiName = apiName.replace(/([a-z])([A-Z])/g, '$1_$2').toUpperCase();
+            
+        return apiName;
     }
 
     const generateDatabaseManager = (workbook) => {
@@ -306,10 +322,13 @@ global class ReturnData{
             const fieldNames = generateSqliteFieldNames(formattedObjectName, apiFields);
             console.log('fieldNames =>', fieldNames);
 
-            databaseManagerCode += `tx.executeSql(\n`;
-            databaseManagerCode += `\t\`CREATE TABLE IF NOT EXISTS ${formattedObjectName.toUpperCase()}(\n`;
+            const sqliteFieldName = generateSqliteFieldName(objectName);
+            console.log('sqliteFieldName =>', sqliteFieldName);
 
-            databaseManagerCode += `\t\t${formattedObjectName.toUpperCase()}_ID INTEGER PRIMARY KEY AUTOINCREMENT,\n`;
+            databaseManagerCode += `tx.executeSql(\n`;
+            databaseManagerCode += `\t\`CREATE TABLE IF NOT EXISTS ${sqliteFieldName}(\n`;
+
+            databaseManagerCode += `\t\t${sqliteFieldName}_ID INTEGER PRIMARY KEY AUTOINCREMENT,\n`;
 
             fieldNames.forEach(item => {
                 databaseManagerCode += `\t\t${item.fieldName} ${DataTypeToSqliteType[item.dataType]} NOT NULL DEFAULT ${DataTypeToSqliteValue[item.dataType]},\n`;
@@ -340,8 +359,10 @@ global class ReturnData{
             const apiFields = objectData.map(item => { return { apiName: item.apiName.trim(), dataType: item.dataType } });
             console.log('apiFields =>', apiFields);
 
-            databaseManagerCode += `LAST_SYNC_${formattedObjectName.toUpperCase()} NUMERIC DEFAULT 0,\n`;
-            databaseManagerCode += `LAST_SYNC_${formattedObjectName.toUpperCase()}_ID TEXT DEFAULT '',\n`;
+            const sqliteFieldName = generateSqliteFieldName(objectName);
+
+            databaseManagerCode += `LAST_SYNC_${sqliteFieldName} NUMERIC DEFAULT 0,\n`;
+            databaseManagerCode += `LAST_SYNC_${sqliteFieldName}_ID TEXT DEFAULT '',\n`;
         })
 
         return databaseManagerCode;
@@ -359,8 +380,8 @@ global class ReturnData{
             const apiFields = objectData.map(item => { return { apiName: item.apiName.trim(), dataType: item.dataType } });
             console.log('apiFields =>', apiFields);
 
-            databaseManagerCode += `lastSyncCampaign${formattedObjectName}Data: string;\n`;
-            databaseManagerCode += `lastSyncCampaign${formattedObjectName}DataId: string;\n`;
+            databaseManagerCode += `lastSync${formattedObjectName}Data: string;\n`;
+            databaseManagerCode += `lastSync${formattedObjectName}DataId: string;\n`;
         })
 
         return databaseManagerCode;
@@ -378,8 +399,10 @@ global class ReturnData{
             const apiFields = objectData.map(item => { return { apiName: item.apiName.trim(), dataType: item.dataType } });
             console.log('apiFields =>', apiFields);
 
-            databaseManagerCode += `lastSync${formattedObjectName}Data: rows.item(0).LAST_SYNC_${formattedObjectName.toUpperCase()},\n`;
-            databaseManagerCode += `lastSync${formattedObjectName}DataId: rows.item(0).LAST_SYNC_${formattedObjectName.toUpperCase()}_ID,\n`;
+            const sqliteFieldName = generateSqliteFieldName(objectName);
+
+            databaseManagerCode += `lastSync${formattedObjectName}Data: rows.item(0).LAST_SYNC_${sqliteFieldName},\n`;
+            databaseManagerCode += `lastSync${formattedObjectName}DataId: rows.item(0).LAST_SYNC_${sqliteFieldName}_ID,\n`;
         })
 
         return databaseManagerCode;
@@ -400,11 +423,13 @@ global class ReturnData{
             const fieldNames = generateSqliteFieldNames(formattedObjectName, apiFields);
             console.log('fieldNames =>', fieldNames);
 
-            code += `${formattedObjectName.toUpperCase()}:\n`;
-            code += `\t\`INSERT OR REPLACE INTO ${formattedObjectName.toUpperCase()}\n`;
+            const sqliteFieldName = generateSqliteFieldName(objectName);
+
+            code += `${sqliteFieldName}:\n`;
+            code += `\t\`INSERT OR REPLACE INTO ${sqliteFieldName}\n`;
             code += `\t\t(\n`;
 
-            code += `\t\t\t${formattedObjectName.toUpperCase()}_ID, \n`;
+            code += `\t\t\t${sqliteFieldName}_ID, \n`;
 
             fieldNames.forEach((item, index) => {
                 code += `\t\t\t${item.fieldName}, \n`;
@@ -432,7 +457,9 @@ global class ReturnData{
             const apiFields = objectData.map(item => { return { apiName: item.apiName.trim(), dataType: item.dataType } });
             console.log('apiFields =>', apiFields);
 
-            code += `${formattedObjectName.toUpperCase()}: [],\n`;
+            const sqliteFieldName = generateSqliteFieldName(objectName);
+
+            code += `${sqliteFieldName}: [],\n`;
         })
 
         return code;
@@ -452,9 +479,95 @@ global class ReturnData{
 
             const smallObjectName = formatVariable(objectName);
 
+            const sqliteFieldName = generateSqliteFieldName(objectName);
+
             code += `if (received?.syncData?.${smallObjectName}Sync && received?.syncData?.${smallObjectName}Sync?.lastSyncStamp) {\n`;
-            code += `\tquery += \` , LAST_SYNC_${formattedObjectName.toUpperCase()} = \${received.syncData.${smallObjectName}Sync.lastSyncStamp}\`;\n`;
-            code += `\tquery += \` , LAST_SYNC_${formattedObjectName.toUpperCase()}_ID = \${received.syncData.${smallObjectName}Sync.lastSyncId}\`;\n`;
+            code += `\tquery += \` , LAST_SYNC_${sqliteFieldName} = '\${received.syncData.${smallObjectName}Sync.lastSyncStamp}'\`;\n`;
+            code += `\tquery += \` , LAST_SYNC_${sqliteFieldName}_ID = '\${received.syncData.${smallObjectName}Sync.lastSyncId}'\`;\n`;
+            code += `}\n`;
+        })
+
+        return code;
+    }
+
+    const generateSyncControllerInInsertQuery = (workbook) => {
+        let code = '';
+        workbook.SheetNames.forEach(objectName => {
+            console.log('objectName =>', objectName);
+            const sheet = workbook.Sheets[objectName];
+            const objectData = XLSX.utils.sheet_to_json(sheet);
+            console.log('objectData =>', objectData);
+            
+            const formattedObjectName = objectName.replace('__c', '').trim();
+            const apiFields = objectData.map(item => { return { apiName: item.apiName.trim(), dataType: item.dataType } });
+            console.log('apiFields =>', apiFields);
+
+            const formattedApiFieldsMap = {};
+            apiFields.forEach(item => {
+                let formattedVar = formatVariable(item.apiName)
+                if (formattedVar === 'isDeleted') {
+                    formattedVar = 'deleted';
+                }
+                formattedApiFieldsMap[formattedVar] = item;
+            });
+            console.log('formattedApiFieldsMap generateSyncControllerInInsertQuery =>', formattedApiFieldsMap);
+
+            const smallObjectName = formatVariable(objectName);
+
+            const sqliteFieldName = generateSqliteFieldName(objectName);
+
+            code += `// ${sqliteFieldName}\n`;
+            code += `if (\n`;
+            code += `\treceived.${smallObjectName}Request &&\n`;
+            code += `\treceived.${smallObjectName}Request.id.length > 0\n`;
+            code += `) {\n`;
+
+            code += `\t\tcurrLength = received.${smallObjectName}Request.id.length;  \n`;
+            code += `\t\tqueryBuffer = baseQuery["${sqliteFieldName}"];  \n`;
+            code += `\t\tvar hasBuffer = false;  \n`;
+            code += `\t\tfor (var i = 0; i < currLength; i++) {  \n`;
+
+            code += `\t\t\tif (received.${smallObjectName}Request.deleted[i]) {  \n`;
+            code += `\t\t\t\tdeletedArray["${sqliteFieldName}"].push(received.${smallObjectName}Request.id[i]);  \n`;
+            code += `\t\t\t} else {  \n`;
+
+            code += `\t\t\t\tconst useNullOrValue = firstLoadBaseData ? "null" : \` (SELECT ${sqliteFieldName}_ID FROM ${sqliteFieldName} WHERE ${sqliteFieldName}_IDX = '\${received.${smallObjectName}Request.id[i]}' ) \`;  \n\n`;
+            code += `\t\t\t\tqueryBuffer +=  \n`;
+            code += `\t\t\t\t\t(hasBuffer ? "," : "") +  \n`;
+            code += `\t\t\t\t\t\`(  \n`;
+            code += `\t\t\t\t\t\t\${useNullOrValue},  \n`;
+
+            Object.keys(formattedApiFieldsMap).forEach(key => {
+                if (key === 'deleted' || key === 'isDeleted' || key === 'systemModStamp') {
+
+                } else {
+                    code += `\t\t\t\t\t\t'\${stringEscape(received.${smallObjectName}Request.${key}[i])}',\n`;
+                }
+            })
+
+            code += `\t\t\t\t\t\t'1'  \n`;
+            code += `\t\t\t\t\t)\`;  \n`;
+            
+
+            code += `\t\t\t\thasBuffer = true; \n`;
+            code += `\t\t\t\tif (queryBuffer.length > maxLength) { \n`;
+            code += `\t\t\t\t\tgroupQuery.push(\`\${queryBuffer};\`); \n`;
+            code += `\t\t\t\t\tqueryBuffer = baseQuery["${sqliteFieldName}"]; \n`;
+            code += `\t\t\t\t\thasBuffer = false; \n`;
+            code += `\t\t\t\t} \n`;
+
+            code += `\t\t\t} \n`;
+
+            code += `\t\t}  \n\n`;
+
+            code += `\t\tif (hasBuffer) groupQuery.push(queryBuffer); \n`;
+            code += `\t\tif (deletedArray["${sqliteFieldName}"].length > 0) { \n`;
+            code += `\t\t\tgroupQuery.push( \n`;
+            code += `\t\t\t\t\`DELETE FROM ${sqliteFieldName} \n`;
+            code += `\t\t\t\t\tWHERE ${sqliteFieldName}_IDX IN ('\${deletedArray["${sqliteFieldName}"].join("','")}')\`\n`;
+            code += `\t\t\t); \n`;
+            code += `\t\t} \n`;
+
             code += `}\n`;
         })
 
@@ -482,6 +595,7 @@ global class ReturnData{
             let syncControllerInBaseQueryCode = generateSyncControllerInBaseQuery(workbook);
             let syncControllerInDeleteArrayCode = generateSyncControllerInDeleteArray(workbook);
             let syncControllerInSyncSystemDataCode = generateSyncControllerInSyncSystemData(workbook);
+            let syncControllerInInsertQueryCode = generateSyncControllerInInsertQuery(workbook);
 
             setRequestConfig(requestConfigCode);
             setBaseRequest(baseRequestCode);
@@ -495,6 +609,7 @@ global class ReturnData{
             setSyncControllerInBaseQuery(syncControllerInBaseQueryCode);
             setSyncControllerInDeleteArray(syncControllerInDeleteArrayCode);
             setSyncControllerInSyncSystemData(syncControllerInSyncSystemDataCode);
+            setSyncControllerInInsertQuery(syncControllerInInsertQueryCode);
         };
 
         reader.readAsBinaryString(file);
@@ -517,10 +632,12 @@ global class ReturnData{
             <CodeBlock code={databaseManagerSystemTableCode} language={'javascript'} title={'DatabaseManager SYSTEM Table'} />
             <CodeBlock code={databaseManagerSystemDataCode} language={'javascript'} title={'DatabaseManager SystemData'} />
             <CodeBlock code={databaseManagerGetSystemInfo} language={'javascript'} title={'DatabaseManager getSystemInfo'} />
+            <CodeBlock code={syncControllerInInsertQuery} language={'javascript'} title={'SyncControllerIn insertQuery'} />
 
             <CodeBlock code={syncControllerInBaseQuery} language={'javascript'} title={'SyncControllerIn baseQuery'} />
             <CodeBlock code={syncControllerInDeleteArray} language={'javascript'} title={'SyncControllerIn deleteArray'} />
             <CodeBlock code={syncControllerInSyncSystemData} language={'javascript'} title={'SyncControllerIn syncSystemData'} />
+            
 
             <CodeBlock code={requestConfig} language={'apex'} title={'RequestConfig'} />
             <CodeBlock code={baseRequest} language={'apex'} title={'BaseRequest'} />
