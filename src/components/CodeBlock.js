@@ -16,7 +16,6 @@ const codeBlockStyles = {
 const CodeBlock = ({ language, code, title }) => {
   const copyToClipboard = () => {
     navigator.clipboard.writeText(code);
-    alert('Código copiado para a área de transferência!');
   };
 
   return (
